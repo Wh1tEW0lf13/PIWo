@@ -84,6 +84,11 @@ header {
   border:#ddd;
 }
 
+.product-image img {
+  width: 100%;
+  height: 100%;
+}
+
 .product-info{
   flex: 1;
 }
