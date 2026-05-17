@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
+// For Cloud Run deployment: use 'standalone' output for efficient Docker builds
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: 'standalone'
 };
 
 export default nextConfig;

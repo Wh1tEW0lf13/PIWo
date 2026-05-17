@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Auth from "./components/Auth";
+// 1. Importujemy potrzebne funkcje z Firebase
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../lib/firebase"
 
 export default function Home() {
   const [games, setGames] = useState<any[]>([]);
@@ -12,44 +16,37 @@ export default function Home() {
   const ITEMS_PER_PAGE = 9;
 
   useEffect(() => {
-    const localGames = localStorage.getItem("my_board_games");
-    let hasValidLocalData = false;
-
-    if (localGames) {
+    // 2. Tworzymy asynchroniczną funkcję do pobrania danych z Firestore
+    const fetchGamesFromFirebase = async () => {
+      setIsLoading(true);
       try {
-        const parsedGames = JSON.parse(localGames);
-        if (Array.isArray(parsedGames) && parsedGames.length > 0) {
-          setGames(parsedGames);
-          hasValidLocalData = true;
-          setIsLoading(false);
-        }
-      } catch (e) {
-        console.error("Błąd odczytu z pamięci:", e);
-      }
-    }
+        // Odwołujemy się do kolekcji "board_games" w Firebase
+        const gamesCollection = collection(db, "board_games");
+        const gamesSnapshot = await getDocs(gamesCollection);
 
-    if (!hasValidLocalData) {
-      fetch('https://szandala.github.io/piwo-api/board-games.json')
-          .then((response) => response.json())
-          .then((data) => {
-            if (data && data.board_games) {
-              setGames(data.board_games);
-              localStorage.setItem("my_board_games", JSON.stringify(data.board_games));
-            } else {
-              setGames([]);
-            }
-            setIsLoading(false);
-          })
-          .catch((error) => console.error("Błąd pobierania:", error));
-    }
+        // Mapujemy dokumenty Firebase na zwykłą tablicę obiektów
+        const gamesList = gamesSnapshot.docs.map(doc => ({
+          id: doc.id, // Firebase automatycznie generuje unikalne ID
+          ...doc.data() // Rozwijamy resztę danych gry
+        }));
+
+        setGames(gamesList);
+      } catch (error) {
+        console.error("Błąd pobierania danych z Firebase:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchGamesFromFirebase();
   }, []);
 
-  //Filtrujemy wszystkie gry
+  // Filtrujemy wszystkie gry
   const filteredGames = games.filter((game) =>
       game.title?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  //Obliczamy paginację na podstawie przefiltrowanych gier
+  // Obliczamy paginację na podstawie przefiltrowanych gier
   const totalPages = Math.ceil(filteredGames.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedGames = filteredGames.slice(startIndex, startIndex + ITEMS_PER_PAGE);
@@ -59,7 +56,10 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
 
           <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <h1 className="text-3xl font-bold tracking-tight">Planszówki do Piwa</h1>
+            <div className="flex flex-col gap-2">
+              <h1 className="text-3xl font-bold tracking-tight">Planszówki do Piwa</h1>
+              <Auth />
+            </div>
             <input
                 type="text"
                 placeholder="Szukaj gry..."
@@ -67,7 +67,7 @@ export default function Home() {
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
-                  setCurrentPage(1); // Resetujemy do 1 strony po wpisaniu nowej frazy!
+                  setCurrentPage(1); // Resetujemy do 1 strony po wpisaniu nowej frazy
                 }}
             />
             <Link href="/edit/new" className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 whitespace-nowrap">
@@ -80,7 +80,7 @@ export default function Home() {
             <main className="flex-1 flex flex-col min-h-[600px]">
               {isLoading ? (
                   <div className="text-center text-zinc-500 mt-10 text-lg font-medium animate-pulse">
-                    Ładowanie gier z serwera...
+                    Ładowanie gier z bazy danych...
                   </div>
               ) : filteredGames.length === 0 ? (
                   <p className="text-center text-zinc-500 mt-10">Brak gier spełniających kryteria.</p>
@@ -105,7 +105,7 @@ export default function Home() {
 
                               <Link
                                   href={`/game/${game.id}`}
-                                  className="bg-white dark:bg-zinc-800 rounded-xl overflow-hidden shadow-sm border border-zinc-200 dark:border-zinc-700 transition-transform hover:-translate-y-1 hover:shadow-md cursor-pointer block flex flex-col h-full"
+                                  className={`bg-white dark:bg-zinc-800 rounded-xl overflow-hidden shadow-sm border border-zinc-200 dark:border-zinc-700 transition-transform hover:-translate-y-1 hover:shadow-md cursor-pointer block flex flex-col h-full ${!game.available ? 'opacity-50' : ''}`}
                               >
                                 <img
                                     src={imageUrl}
@@ -116,9 +116,11 @@ export default function Home() {
                                 <div className="p-4 flex flex-col flex-1">
                                   <div className="flex justify-between items-start mb-2 gap-2">
                                     <h3 className="text-lg font-bold leading-tight">{game.title}</h3>
-                                    <span className="text-[10px] bg-zinc-200 dark:bg-zinc-700 px-2 py-1 rounded-full uppercase font-semibold whitespace-nowrap">
-                                        {game.type}
+                                    {game.type && (
+                                        <span className="text-[10px] bg-zinc-200 dark:bg-zinc-700 px-2 py-1 rounded-full uppercase font-semibold whitespace-nowrap">
+                                          {game.type}
                                       </span>
+                                    )}
                                   </div>
 
                                   <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-6">
@@ -129,12 +131,16 @@ export default function Home() {
                                     {game.auction ? (
                                         <div>
                                           <p className="text-xs text-red-500 font-bold mb-0.5">TRWA LICYTACJA</p>
-                                          <p className="text-xl font-bold">{game.auction.current_bid.toFixed(2)} zł</p>
+                                          <p className="text-xl font-bold">
+                                            {game.auction.current_bid !== undefined ? game.auction.current_bid.toFixed(2) : "0.00"} zł
+                                          </p>
                                         </div>
                                     ) : (
                                         <div>
                                           <p className="text-xs text-zinc-500 font-semibold mb-0.5">KUP TERAZ</p>
-                                          <p className="text-xl font-bold">{game.price_pln.toFixed(2)} zł</p>
+                                          <p className="text-xl font-bold">
+                                            {game.price_pln !== undefined ? game.price_pln.toFixed(2) : "0.00"} zł
+                                          </p>
                                         </div>
                                     )}
                                   </div>
