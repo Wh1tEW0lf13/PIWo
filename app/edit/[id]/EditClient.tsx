@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+// 1. Importujemy useRef
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc, getDoc, addDoc, updateDoc, deleteDoc, collection } from "firebase/firestore";
@@ -11,7 +12,12 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
     const router = useRouter();
     const isNew = params.id === "new";
 
-    // Stan formularza
+    // 2. Tworzymy referencję dla pola opisu (komponent niekontrolowany)
+    const descriptionRef = useRef<HTMLTextAreaElement>(null);
+
+    // Dodatkowy stan, by przechować opis do momentu załadowania formularza
+    const [initialDescription, setInitialDescription] = useState("");
+
     const [formData, setFormData] = useState({
         title: "",
         publisher: "",
@@ -21,8 +27,8 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         avg_play_time_minutes: 60,
         price_pln: 100.00,
         images: [] as string[],
-        description: [] as string[],
         owner_uid: "",
+        // Usunęliśmy stąd 'description', ponieważ zarządza nim teraz useRef
     });
 
     const [isLoading, setIsLoading] = useState(true);
@@ -31,7 +37,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
     const [error, setError] = useState<string | null>(null);
     const [currentUser, setCurrentUser] = useState<any>(null);
 
-    // 1. Sprawdzanie stanu zalogowania użytkownika
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setCurrentUser(user);
@@ -42,7 +47,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         return () => unsubscribe();
     }, []);
 
-    // 2. Pobieranie danych gry (jeśli to edycja)
     useEffect(() => {
         let mounted = true;
 
@@ -72,9 +76,16 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
                         avg_play_time_minutes: data.avg_play_time_minutes || 60,
                         price_pln: data.price_pln || 100.00,
                         images: data.images || [],
-                        description: data.description || [],
                         owner_uid: data.owner_uid || "",
                     });
+
+                    // 3. Konwersja tablicy akapitów z Firebase na jeden tekst dla <textarea>
+                    if (data.description) {
+                        const descText = Array.isArray(data.description)
+                            ? data.description.join("\n")
+                            : data.description;
+                        setInitialDescription(descText);
+                    }
                 } else {
                     if (mounted) setError("Nie znaleziono takiej gry.");
                 }
@@ -107,7 +118,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         }));
     };
 
-    // Obsługa zapisywania/aktualizacji
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentUser) {
@@ -124,16 +134,28 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         setError(null);
 
         try {
+            // 4. Pobieramy tekst prosto z DOM przez referencję i dzielimy na tablicę akapitów
+            const rawDescription = descriptionRef.current?.value || "";
+            const descriptionArray = rawDescription
+                .split("\n")
+                .map(line => line.trim())
+                .filter(line => line.length > 0); // Pomijamy puste linie
+
+            const payloadToSave = {
+                ...formData,
+                description: descriptionArray // Podmieniamy na właściwy format
+            };
+
             if (isNew) {
                 await addDoc(collection(db, "board_games"), {
-                    ...formData,
+                    ...payloadToSave,
                     owner_uid: currentUser.uid,
                     available: true,
                     created_at: new Date()
                 });
             } else {
                 const docRef = doc(db, "board_games", params.id);
-                await updateDoc(docRef, formData);
+                await updateDoc(docRef, payloadToSave);
             }
 
             router.push("/");
@@ -144,7 +166,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         }
     };
 
-    // Obsługa usuwania
     const handleDelete = async () => {
         if (!currentUser || formData.owner_uid !== currentUser.uid) {
             setError("Nie masz uprawnień do usunięcia tej gry.");
@@ -160,8 +181,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         try {
             const docRef = doc(db, "board_games", params.id);
             await deleteDoc(docRef);
-
-            // Po udanym usunięciu wracamy na stronę główną
             router.push("/");
         } catch (err) {
             console.error("Błąd podczas usuwania gry z Firestore:", err);
@@ -228,6 +247,17 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
                         <input required type="number" step="0.01" name="price_pln" value={formData.price_pln} onChange={handleChange} className="w-full p-2 rounded-lg border dark:bg-zinc-900 dark:border-zinc-700" />
                     </div>
 
+                    {/* 5. Nasze nowe niekontrolowane pole Opisu */}
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Opis gry</label>
+                        <textarea
+                            ref={descriptionRef}
+                            defaultValue={initialDescription}
+                            placeholder="Wpisz opis gry, zasady... Każda nowa linia (Enter) to nowy akapit."
+                            className="w-full p-2 min-h-[160px] rounded-lg border dark:bg-zinc-900 dark:border-zinc-700 resize-y"
+                        />
+                    </div>
+
                     <div className="flex flex-col gap-3 pt-4">
                         <button
                             type="submit"
@@ -237,7 +267,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
                             {isSaving ? "Zapisywanie..." : (isNew ? "Zapisz i dodaj grę" : "Zapisz zmiany")}
                         </button>
 
-                        {/* Przycisk usuwania pojawia się tylko podczas edycji istniejącej gry */}
                         {!isNew && (
                             <button
                                 type="button"
