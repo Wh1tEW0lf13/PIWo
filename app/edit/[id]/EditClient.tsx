@@ -1,6 +1,5 @@
 "use client";
 
-// 1. Importujemy useRef
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -12,10 +11,8 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
     const router = useRouter();
     const isNew = params.id === "new";
 
-    // 2. Tworzymy referencję dla pola opisu (komponent niekontrolowany)
     const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
-    // Dodatkowy stan, by przechować opis do momentu załadowania formularza
     const [initialDescription, setInitialDescription] = useState("");
 
     const [formData, setFormData] = useState({
@@ -28,7 +25,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         price_pln: 100.00,
         images: [] as string[],
         owner_uid: "",
-        // Usunęliśmy stąd 'description', ponieważ zarządza nim teraz useRef
     });
 
     const [isLoading, setIsLoading] = useState(true);
@@ -79,7 +75,6 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
                         owner_uid: data.owner_uid || "",
                     });
 
-                    // 3. Konwersja tablicy akapitów z Firebase na jeden tekst dla <textarea>
                     if (data.description) {
                         const descText = Array.isArray(data.description)
                             ? data.description.join("\n")
@@ -134,16 +129,15 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
         setError(null);
 
         try {
-            // 4. Pobieramy tekst prosto z DOM przez referencję i dzielimy na tablicę akapitów
             const rawDescription = descriptionRef.current?.value || "";
             const descriptionArray = rawDescription
                 .split("\n")
                 .map(line => line.trim())
-                .filter(line => line.length > 0); // Pomijamy puste linie
+                .filter(line => line.length > 0);
 
             const payloadToSave = {
                 ...formData,
-                description: descriptionArray // Podmieniamy na właściwy format
+                description: descriptionArray
             };
 
             if (isNew) {
@@ -247,7 +241,7 @@ export default function EditGamePage({ params }: { params: { id: string } }) {
                         <input required type="number" step="0.01" name="price_pln" value={formData.price_pln} onChange={handleChange} className="w-full p-2 rounded-lg border dark:bg-zinc-900 dark:border-zinc-700" />
                     </div>
 
-                    {/* 5. Nasze nowe niekontrolowane pole Opisu */}
+                    {/*Nasze nowe niekontrolowane pole Opisu */}
                     <div>
                         <label className="block text-sm font-medium mb-1">Opis gry</label>
                         <textarea
